@@ -24,9 +24,11 @@ checked sefer - verify against the text before relying on a gloss.
 
 Rashi/Tosafot-on-Gemara verification progress (2026-11-12): every gloss is being
 checked word-by-word against its actual Rashi/Tosafot/Rashbam context. So far
-22,500 of 112,367 new words are context-verified (the most frequent words,
-covering most occurrences); the rest still carry the honest draft labels
-"low (unverified draft)" or "uncertain; see context".
+88,367 of 112,367 new words (79%) are context-verified and labeled "verified in
+context". Low-confidence helper glosses are labeled "helper gloss, low
+confidence (unverified)". The rest still carry the honest draft labels
+"low (unverified draft)" or "uncertain; see context" (remaining shards in
+progress).
 
 ## Running
 
