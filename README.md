@@ -12,8 +12,8 @@ the full Chumash and Rashi-on-Chumash word lists.
 - `index.html` - the app, including the built-in Shas quick-gloss list (37,607 words).
 - `data-chumash.js` - 12,840 unique Chumash words: occurrences, translation, grammatical form, source, confidence, example verse.
 - `data-rashi.js` - 29,415 unique Rashi-on-Chumash words, same format.
-- `data-rashi-gemara.js` - 129,551 unique words from Rashi on Gemara (all tractates that have one) plus Rashbam on Bava Batra/Pesachim, same format.
-- `data-tosafot.js` - 96,370 unique Tosafot-on-Gemara words, same format.
+- `data-rashi-gemara.js` - 85,162 unique words from Rashi on Gemara (all tractates that have one) plus Rashbam on Bava Batra/Pesachim, same format. Only words NOT already in the lists above, so no word ever appears twice.
+- `data-tosafot.js` - 62,115 unique Tosafot-on-Gemara words, same format, also net-new only.
 
 The Chumash and Rashi lists come from the "Mefarshei HaOtzar - Chumash & Rashi
 Word Lists" Google Sheet (built 2026-11-12). Every row keeps its own source and
