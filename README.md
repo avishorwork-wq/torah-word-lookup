@@ -22,6 +22,13 @@ confidence label from the sheet (e.g. "BDB via OSHB lemma", "Jastrow",
 "uncertain; see context" rather than a guess. This is a study aid, not a
 checked sefer - verify against the text before relying on a gloss.
 
+Rashi/Tosafot-on-Gemara verification progress (2026-11-12): every gloss is being
+checked word-by-word against its actual Rashi/Tosafot/Rashbam context. So far
+22,500 of 112,367 new words are context-verified (the most frequent words,
+covering most occurrences); the rest still carry the honest draft labels
+"low (unverified draft)" or "uncertain; see context".
+
 ## Running
 
 It is a static site: open `index.html` or serve the folder. Hosted with GitHub Pages.
+
