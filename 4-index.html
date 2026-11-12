@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gemara Word Lookup</title>
+<style>
+:root{--bg:#faf9f6;--fg:#1c1c1c;--mut:#6a6a6a;--card:#fff;--line:#0002;--acc:#1a5fb4;--tag:#e8eef8;--warn:#fff4e0;--warnfg:#7a4b00}
+@media(prefers-color-scheme:dark){:root{--bg:#141414;--fg:#ececec;--mut:#9a9a9a;--card:#202020;--line:#fff2;--acc:#7db2ff;--tag:#2a3550;--warn:#3a2d12;--warnfg:#f0c36a}}
+*{box-sizing:border-box}
+body{margin:0;padding:14px;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,sans-serif}
+main{max-width:720px;margin:0 auto}
+h1{font-size:21px;margin:0 0 2px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:12px}
+form{display:flex;gap:8px}
+#wordInput{flex:1;min-width:0;font:22px/1.3 system-ui;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);direction:rtl}
+#searchButton{font:inherit;padding:0 18px;border:0;border-radius:10px;background:var(--acc);color:#fff}
+#searchButton:disabled{opacity:.5}
+.examples{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.example{font:16px system-ui;padding:5px 11px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.resulthead{display:flex;justify-content:space-between;align-items:baseline;margin:14px 2px 8px;font-size:13px;color:var(--mut)}
+.resulthead strong{color:var(--fg);font-size:15px}
+.entry{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px;animation:rise .25s both}
+@keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.entrytop{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.headword{font-size:26px;font-weight:600}
+.sourcebadge{font-size:12px;color:var(--mut);text-align:right}
+.definition{margin-top:6px}
+.senses{margin:6px 0 0;padding-left:22px}
+.senses li{margin:3px 0}
+.meta{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:12px;background:var(--tag);padding:2px 9px;border-radius:10px}
+.context{font-size:13px;color:var(--mut);margin-top:6px}
+.entryfoot{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--mut)}
+a{color:var(--acc)}
+details{margin-top:8px;font-size:13px;color:var(--mut)}
+details div{margin-top:5px;max-height:180px;overflow:auto;white-space:pre-wrap}
+.status{padding:10px 2px;color:var(--mut);font-size:14px;display:flex;align-items:center;gap:9px}
+.spinner{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.notice{background:var(--warn);color:var(--warnfg);border-radius:12px;padding:12px 14px;margin-bottom:10px;font-size:14px}
+.external{display:flex;flex-wrap:wrap;gap:12px;margin:12px 2px;font-size:14px}
+.related{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line)}
+.related .hw{font-size:19px;direction:rtl}
+.section{margin:16px 2px 6px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>Gemara Word Lookup</h1>
+<div class="sub">Type or paste a word from Shas, Chumash, or Rashi on Chumash. Instant gloss for 37,607 Shas words, 12,840 Chumash words, and 29,419 Rashi words, plus dictionary entries from Sefaria.</div>
+<form id="searchForm" autocomplete="off">
+  <input id="wordInput" type="text" dir="rtl" lang="he" placeholder="הקלד מילה" autocapitalize="off" spellcheck="false">
+  <button id="searchButton" type="submit">Search</button>
+</form>
+<div class="examples">
+  <button class="example" type="button" data-word="אשמעינן">אשמעינן</button>
+  <button class="example" type="button" data-word="מיפלגי">מיפלגי</button>
+  <button class="example" type="button" data-word="חנינא">חנינא</button>
+  <button class="example" type="button" data-word="איכא">איכא</button>
+  <button class="example" type="button" data-word="למימרא">למימרא</button>
+  <button class="example" type="button" data-word="יעקב">יעקב</button>
+  <button class="example" type="button" data-word="מעשה">מעשה</button>
+</div>
+<div id="results"></div>
+</main>
+
+<script src="5-data-shas.js"></script>
+<script src="2-data-chumash.js"></script>
+<script src="3-data-rashi.js"></script>
+<script>
+"use strict";
+/* word -> [times in Shas, quick gloss]. Keys use final letters folded (see canonical()). */
+
+const form = document.getElementById("searchForm");
+const input = document.getElementById("wordInput");
+const results = document.getElementById("results");
+const button = document.getElementById("searchButton");
+
+const CACHE_TTL = 12 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT = 10000;
+const MAX_JASTROW_CANDIDATES = 6;
+const MAX_ENTRIES = 5;
+const MAX_SENSES = 5;
+const MAX_SENSE_CHARS = 240;
+
+const LOCAL_ENTRIES = {
+  "איקלע": { headword: "אִיקְלַע", definition: "He happened to arrive; he came to a place; he found himself somewhere.", context: "Commonly used when someone arrived at or happened to be in a particular place.", grammar: "Verb · past, masculine singular", source: "Curated Talmudic usage", confidence: "Contextual gloss" },
+  "איסתייעא": { headword: "אִסְתַּיְּעָא", definition: "It worked out; it came to pass; circumstances allowed it.", context: "In איסתייעא מילתא: the matter worked out or the opportunity came about.", grammar: "Verb · related to סייע", source: "Curated Talmudic usage", confidence: "Contextual gloss" },
+  "איכא": { headword: "אִיכָּא", definition: "There is; there exists; there are.", context: "Frequently used to introduce the existence of something. איכא דאמרי means 'some say' or 'there are those who say'.", grammar: "Aramaic existential expression", source: "Curated Talmudic usage", confidence: "Contextual gloss" },
+  "למימרא": { headword: "לְמֵימְרָא", definition: "To say; to suggest; to infer or conclude.", context: "Frequently introduces an inference or question about what a statement implies.", grammar: "Infinitive · related to אמר", source: "Curated Talmudic usage", confidence: "Contextual gloss" }
+};
+
+/* ===== normalization ===== */
+function normalizeWord(value) {
+  return String(value || "").normalize("NFC")
+    .replace(/[\u0591-\u05BD\u05BF-\u05C7]/g, "")
+    .replace(/[״׳"'`.,;:!?()[\]{}<>־–—]/g, "")
+    .replace(/\s+/g, " ").trim();
+}
+function canonical(value) {
+  return normalizeWord(value).replace(/[ךםןףץ]/g, c => ({ "ך": "כ", "ם": "מ", "ן": "נ", "ף": "פ", "ץ": "צ" }[c]));
+}
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function stripMarkup(value) {
+  if (typeof value !== "string") return "";
+  const doc = new DOMParser().parseFromString(value, "text/html");
+  return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+/* ===== raw flattening (kept only for the "full text" toggle) ===== */
+function flattenMeaning(value, output = [], depth = 0) {
+  if (depth > 10 || value == null) return output;
+  if (typeof value === "string") {
+    const text = stripMarkup(value);
+    if (text && !output.includes(text)) output.push(text);
+    return output;
+  }
+  if (Array.isArray(value)) { value.forEach(i => flattenMeaning(i, output, depth + 1)); return output; }
+  if (typeof value === "object") {
+    for (const key of ["definition", "senses", "text", "meaning", "translation", "content", "html"]) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) flattenMeaning(value[key], output, depth + 1);
+    }
+  }
+  return output;
+}
+function getGrammar(entry) {
+  const found = [];
+  (function walk(obj, depth = 0) {
+    if (!obj || typeof obj !== "object" || depth > 7) return;
+    if (Array.isArray(obj)) { obj.forEach(i => walk(i, depth + 1)); return; }
+    for (const [key, value] of Object.entries(obj)) {
+      if (["grammar", "morphology", "verbal_stem", "binyan_form", "part_of_speech"].includes(key)) {
+        if (typeof value === "string") found.push(stripMarkup(value));
+        else if (value && typeof value === "object") walk(value, depth + 1);
+      } else if (value && typeof value === "object") walk(value, depth + 1);
+    }
+  })(entry);
+  return [...new Set(found.filter(Boolean))].join(" · ").slice(0, 120);
+}
+
+/* ===== CLEANING: turn raw dictionary markup into readable glosses ===== */
+const HEB_RUN = /[\u0590-\u05FF]+(?:[\s,.;:\u05BE]+[\u0590-\u05FF]+){3,}/g;
+
+function cleanDefinition(html) {
+  if (typeof html !== "string") return "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("a.refLink, a[data-ref], sup, .footnote, .footnote-marker, script, style").forEach(n => n.remove());
+  doc.querySelectorAll("br").forEach(n => n.replaceWith(" "));
+  let t = doc.body.textContent || "";
+  t = t
+    .replace(/\([^()]*\d[^()]*\)/g, " ")      /* (Ber. 2a) style citations */
+    .replace(/\[[^\]]*\d[^\]]*\]/g, " ")
+    .replace(HEB_RUN, " … ")                  /* long quoted Hebrew/Aramaic passages */
+    .replace(/[;,]\s*\)/g, ")")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s+([,.;:)])/g, "$1")
+    .replace(/([,;:])(\s*[,;:.])+/g, "$1")
+    .replace(/(…\s*){2,}/g, "… ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.\-–—…]+/, "")
+    .trim();
+  return t;
+}
+function shorten(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const stop = Math.max(cut.lastIndexOf("; "), cut.lastIndexOf(". "), cut.lastIndexOf(", "));
+  return (stop > max * 0.5 ? cut.slice(0, stop) : cut.replace(/\s+\S*$/, "")) + "…";
+}
+function hasRealWords(text) { return /[A-Za-z]{3,}/.test(text) || /[\u05D0-\u05EA]{2,}/.test(text); }
+
+function collectSenses(node, out, depth = 0) {
+  if (node == null || depth > 8) return;
+  if (typeof node === "string") { out.push(cleanDefinition(node)); return; }
+  if (Array.isArray(node)) { node.forEach(n => collectSenses(n, out, depth + 1)); return; }
+  if (typeof node === "object") {
+    if (typeof node.definition === "string") out.push(cleanDefinition(node.definition));
+    if (node.senses) collectSenses(node.senses, out, depth + 1);
+    if (typeof node.text === "string") out.push(cleanDefinition(node.text));
+    if (node.content && typeof node.content === "object") collectSenses(node.content, out, depth + 1);
+    else if (typeof node.content === "string") out.push(cleanDefinition(node.content));
+  }
+}
+
+function makeEntry(rawEntry, searchedWord) {
+  const entry = rawEntry?.entry || rawEntry;
+  if (!entry || typeof entry !== "object") return null;
+
+  const pieces = [];
+  collectSenses(entry.content || entry, pieces);
+  const seen = new Set();
+  const senses = [];
+  for (const p of pieces) {
+    const text = shorten(p, MAX_SENSE_CHARS);
+    const key = text.toLowerCase().slice(0, 60);
+    if (text.length < 2 || !hasRealWords(text) || seen.has(key)) continue;
+    seen.add(key); senses.push(text);
+  }
+  if (!senses.length) return null;
+
+  const headword = stripMarkup(entry.headword || searchedWord);
+  const source = entry.parent_lexicon || entry.lexicon || "Sefaria dictionary";
+  return {
+    headword, senses,
+    definition: senses[0],
+    grammar: getGrammar(entry),
+    source,
+    confidence: "Dictionary entry",
+    raw: flattenMeaning(entry.content || entry).join("\n\n").slice(0, 2500),
+    url: "https://www.sefaria.org/search?q=" + encodeURIComponent(headword) + "&tab=Lexicon"
+  };
+}
+
+/* ===== cache ===== */
+const MEMORY_CACHE = new Map();
+function getCache(key) {
+  const memory = MEMORY_CACHE.get(key);
+  if (memory && Date.now() - memory.time < CACHE_TTL) return memory.value;
+  try {
+    const raw = localStorage.getItem("gemaraLexicon:" + key);
+    if (!raw) return null;
+    const item = JSON.parse(raw);
+    if (Date.now() - item.time > CACHE_TTL) { localStorage.removeItem("gemaraLexicon:" + key); return null; }
+    MEMORY_CACHE.set(key, item);
+    return item.value;
+  } catch (_) { return null; }
+}
+function saveCache(key, value) {
+  const item = { time: Date.now(), value };
+  MEMORY_CACHE.set(key, item);
+  try { localStorage.setItem("gemaraLexicon:" + key, JSON.stringify(item)); } catch (_) {}
+}
+
+/* ===== network ===== */
+async function fetchJSON(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { "Accept": "application/json" } });
+    if (response.status === 404) return [];
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    return await response.json();
+  } finally { clearTimeout(timer); }
+}
+async function cachedFetch(key, url) {
+  const cached = getCache(key);
+  if (cached !== null) return cached;
+  const data = await fetchJSON(url);
+  saveCache(key, data);
+  return data;
+}
+async function sefariaLookup(word, mode) {
+  const params = new URLSearchParams();
+  params.set("always_consonants", "1");
+  if (mode === "exact") params.set("never_split", "1");
+  if (mode === "split") params.set("always_split", "1");
+  const url = "https://www.sefaria.org/api/words/" + encodeURIComponent(word) + "?" + params.toString();
+  const data = await cachedFetch("sefaria|" + mode + "|" + word, url);
+  return Array.isArray(data) ? data : [];
+}
+async function completionLookup(word) {
+  const url = "https://www.sefaria.org/api/words/completion/" + encodeURIComponent(word) + "/" + encodeURIComponent("Jastrow Dictionary") + "?limit=12";
+  const data = await cachedFetch("completion|" + word, url);
+  return Array.isArray(data) ? data : [];
+}
+async function fetchJastrowEntry(headword) {
+  const url = "https://www.sefaria.org/api/lexicon-entry/" + encodeURIComponent("Jastrow Dictionary") + "/" + encodeURIComponent(headword);
+  const data = await cachedFetch("jastrow-entry|" + headword, url);
+  return data?.entry || data;
+}
+function completionHeadwords(completion) {
+  const candidates = [];
+  for (const item of completion) {
+    let word = "";
+    if (Array.isArray(item)) word = item[0] || "";
+    else if (typeof item === "string") word = item;
+    else if (item && typeof item === "object") word = item.headword || item.word || "";
+    word = stripMarkup(word);
+    if (word && !candidates.some(e => canonical(e) === canonical(word))) candidates.push(word);
+  }
+  return candidates;
+}
+async function retrieveJastrowEntries(completion) {
+  const candidates = completionHeadwords(completion).slice(0, MAX_JASTROW_CANDIDATES);
+  const settled = await Promise.allSettled(candidates.map(fetchJastrowEntry));
+  const entries = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled" && r.value && (r.value.content || r.value.headword)) entries.push(r.value);
+  }
+  return entries;
+}
+
+/* ===== local sources ===== */
+function getLocalEntry(word) {
+  const key = canonical(word);
+  for (const [w, e] of Object.entries(LOCAL_ENTRIES)) {
+    if (canonical(w) === key) return { ...e, senses: [e.definition], url: "https://www.sefaria.org/search?q=" + encodeURIComponent(word) + "&tab=Lexicon" };
+  }
+  return null;
+}
+function getShasGloss(word) {
+  const hit = SHAS[canonical(word)];
+  if (!hit) return null;
+  return {
+    headword: normalizeWord(word),
+    senses: String(hit[1]).split(/\s*\/\s*/).filter(Boolean),
+    definition: hit[1],
+    source: "Shas quick gloss",
+    confidence: "AI-written, unverified",
+    count: hit[0]
+  };
+}
+/* Chumash / Rashi word lists (data-chumash.js, data-rashi.js): word -> [count, gloss, form, source, confidence, example] */
+function getSheetGloss(dict, word, scope) {
+  const hit = dict[canonical(word)];
+  if (!hit) return null;
+  return {
+    headword: normalizeWord(word),
+    senses: String(hit[1]).split(/\s*\/\s*/).filter(Boolean),
+    definition: hit[1],
+    grammar: hit[2] || "",
+    source: scope + " · " + (hit[3] || "word list"),
+    confidence: hit[4] || "",
+    context: hit[5] ? "Example: " + hit[5] : "",
+    count: hit[0],
+    scope
+  };
+}
+const PREFIX_LETTERS = "ודלבהמכש";
+function relatedForms(word) {
+  const w = canonical(word), out = [], seen = new Set();
+  for (let n = 1; n <= 2; n++) {
+    if (w.length - n < 2) break;
+    if (![...w.slice(0, n)].every(ch => PREFIX_LETTERS.includes(ch))) break;
+    const stem = w.slice(n), hit = SHAS[stem] || CHUMASH[stem] || RASHI[stem];
+    if (hit && !seen.has(stem)) { seen.add(stem); out.push({ word: stem, gloss: hit[1], prefix: w.slice(0, n) }); }
+  }
+  return out;
+}
+function likelyMorphology(word) {
+  const w = canonical(word), notes = [];
+  for (const [p, note] of [["וא", "Possible ו־ followed by א־ or another prefix"], ["ד", "Possible ד־ relative or connective prefix"], ["ל", "Possible ל־ infinitive or prepositional prefix"], ["ב", "Possible ב־ prepositional prefix"], ["כ", "Possible כ־ comparative prefix"], ["מ", "Possible מ־ prefix"]])
+    if (w.length >= 4 && w.startsWith(p)) notes.push(note);
+  for (const [s, note] of [["יה", "Possible pronominal ending"], ["וה", "Possible pronominal ending"], ["ון", "Possible plural or nominal ending"], ["ין", "Possible plural ending"], ["א", "Possible emphatic-state noun ending"], ["תא", "Possible feminine ending"]])
+    if (w.length >= 4 && w.endsWith(s)) notes.push(note);
+  return [...new Set(notes)].slice(0, 4);
+}
+
+/* ===== dedupe + ranking ===== */
+function dedupeEntries(entries) {
+  const seen = new Set();
+  return entries.filter(e => {
+    const key = canonical(e.headword) + "|" + e.source + "|" + e.definition.slice(0, 80);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
+function rankEntries(entries, word) {
+  const key = canonical(word);
+  const score = e => (canonical(e.headword) === key ? 0 : 1) * 10 + (/Jastrow/i.test(e.source) ? 0 : /BDB|Brown/i.test(e.source) ? 1 : 2);
+  return [...entries].sort((a, b) => score(a) - score(b));
+}
+
+/* ===== display ===== */
+function externalLinks(word) {
+  const q = encodeURIComponent(word);
+  return `<div class="external">
+    <a href="https://cal.huc.edu/searching/quicksearch.html?SearchString=${q}" target="_blank" rel="noopener">Search CAL ↗</a>
+    <a href="https://www.sefaria.org/search?q=${q}&tab=Lexicon" target="_blank" rel="noopener">Search Sefaria ↗</a>
+    <a href="https://en.wiktionary.org/w/index.php?search=${q}" target="_blank" rel="noopener">Search Wiktionary ↗</a>
+  </div>`;
+}
+function renderEntry(entry, index) {
+  const senses = entry.senses && entry.senses.length > 1
+    ? `<ol class="senses">${entry.senses.slice(0, MAX_SENSES).map(s => `<li>${escapeHTML(s)}</li>`).join("")}</ol>`
+    : `<div class="definition">${escapeHTML(entry.definition)}</div>`;
+  const tags = [entry.grammar, entry.confidence, entry.count ? "appears " + entry.count.toLocaleString() + "× in " + (entry.scope || "Shas") : ""].filter(Boolean)
+    .map(t => `<span class="tag">${escapeHTML(t)}</span>`).join("");
+  return `<article class="entry" style="animation-delay:${index * 45}ms">
+    <div class="entrytop"><div class="headword" dir="rtl">${escapeHTML(entry.headword)}</div><div class="sourcebadge">${escapeHTML(entry.source)}</div></div>
+    ${senses}
+    ${entry.context ? `<div class="context">${escapeHTML(entry.context)}</div>` : ""}
+    <div class="meta">${tags}</div>
+    ${entry.raw ? `<details><summary>Full dictionary text</summary><div>${escapeHTML(entry.raw)}</div></details>` : ""}
+    ${entry.url ? `<div class="entryfoot"><span></span><a href="${escapeHTML(entry.url)}" target="_blank" rel="noopener">View source ↗</a></div>` : ""}
+  </article>`;
+}
+
+function renderResults(word, ctx) {
+  const { curated, gloss, chumash, rashi, dict, completion, failures, loading } = ctx;
+  const cards = [];
+  if (curated) cards.push(curated);
+  if (gloss) cards.push(gloss);
+  if (chumash) cards.push(chumash);
+  if (rashi) cards.push(rashi);
+  const total = cards.length + dict.length;
+  let html = `<div class="resulthead"><strong>${total ? total + " result" + (total === 1 ? "" : "s") : (loading ? "Searching…" : "No entry found")}</strong><span dir="rtl">${escapeHTML(word)}</span></div>`;
+  let i = 0;
+  if (curated) html += renderEntry(curated, i++);
+  if (gloss) html += renderEntry(gloss, i++);
+  if (chumash) html += renderEntry(chumash, i++);
+  if (rashi) html += renderEntry(rashi, i++);
+  if (dict.length) {
+    html += `<div class="section">Dictionary entries</div>`;
+    html += dict.map(e => renderEntry(e, i++)).join("");
+  }
+  if (loading) html += `<div class="status"><div class="spinner"></div>Checking Sefaria dictionaries…</div>`;
+
+  if (!loading && !total) {
+    const related = relatedForms(word), candidates = completionHeadwords(completion), morph = likelyMorphology(word);
+    html += `<div class="notice"><strong>No verified translation found.</strong> This does not prove the word is absent from the dictionaries.`;
+    if (related.length) html += `<div style="margin-top:10px"><b>Possibly a prefixed form of</b>${related.map(r => `<div class="related"><span class="hw">${escapeHTML(r.word)}</span><span>${escapeHTML(r.gloss)}</span></div>`).join("")}</div>`;
+    if (candidates.length) html += `<div style="margin-top:10px"><b>Possible Jastrow headwords</b><div class="examples">${candidates.map(c => `<button class="example" type="button" data-word="${escapeHTML(c)}">${escapeHTML(c)}</button>`).join("")}</div></div>`;
+    if (morph.length) html += `<div style="margin-top:10px"><b>Grammatical clues</b><ul>${morph.map(n => `<li>${escapeHTML(n)}</li>`).join("")}</ul></div>`;
+    html += `</div>`;
+  }
+  if (!loading) {
+    html += externalLinks(word);
+    if (failures.length) html += `<div class="context" style="margin:6px 3px">Some dictionary services were unavailable${gloss ? "; the offline gloss above still works" : ""}.</div>`;
+  }
+  results.innerHTML = html;
+}
+
+/* ===== search ===== */
+let currentSearch = 0;
+async function searchWord(rawWord) {
+  const word = normalizeWord(rawWord);
+  if (!word) return;
+  const searchID = ++currentSearch;
+  button.disabled = true;
+
+  const curated = getLocalEntry(word);
+  const gloss = getShasGloss(word);
+  const chumash = getSheetGloss(CHUMASH, word, "Chumash");
+  const rashi = getSheetGloss(RASHI, word, "Rashi on Chumash");
+  const failures = [];
+  let completion = [], dict = [];
+
+  /* instant: show offline answers right away */
+  renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: true });
+
+  try {
+    const settled = await Promise.allSettled(["exact", "consonants", "split"].map(m => sefariaLookup(word, m)));
+    const entries = [];
+    for (const r of settled) {
+      if (r.status === "fulfilled") entries.push(...r.value);
+      else failures.push(r.reason?.message || "Sefaria lookup failed");
+    }
+    let parsed = entries.map(e => makeEntry(e, word)).filter(Boolean);
+
+    if (!parsed.length) {
+      try {
+        completion = await completionLookup(word);
+        const j = await retrieveJastrowEntries(completion);
+        parsed.push(...j.map(e => makeEntry(e, word)).filter(Boolean));
+      } catch (error) { failures.push(error.message || "Jastrow lookup failed"); }
+    }
+    dict = rankEntries(dedupeEntries(parsed), word).slice(0, MAX_ENTRIES);
+    if (searchID !== currentSearch) return;
+    renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: false });
+  } catch (error) {
+    if (searchID !== currentSearch) return;
+    failures.push(error.message || "error");
+    renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: false });
+  } finally {
+    if (searchID === currentSearch) button.disabled = false;
+  }
+}
+
+/* ===== events ===== */
+form.addEventListener("submit", e => { e.preventDefault(); searchWord(input.value); });
+document.querySelectorAll(".example").forEach(btn => btn.addEventListener("click", () => { input.value = btn.dataset.word; searchWord(btn.dataset.word); }));
+results.addEventListener("click", e => {
+  const btn = e.target.closest("[data-word]");
+  if (!btn) return;
+  input.value = btn.dataset.word; searchWord(btn.dataset.word);
+});
+</script>
+</body>
+</html>
