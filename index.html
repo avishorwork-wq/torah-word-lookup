@@ -48,7 +48,7 @@ details div{margin-top:5px;max-height:180px;overflow:auto;white-space:pre-wrap}
 <body>
 <main>
 <h1>Learning Lookup</h1>
-<div class="sub">Type or paste a word from Shas, Chumash, or Rashi on Chumash. Instant gloss for 37,607 Shas words, 12,840 Chumash words, and 29,419 Rashi words, plus dictionary entries from Sefaria.</div>
+<div class="sub">Type or paste a word from Shas, Chumash, Rashi, or Tosafot. Instant gloss for 37,607 Shas words, 12,840 Chumash words, 29,419 Rashi-on-Chumash words, 129,551 Rashi-on-Gemara words, and 96,370 Tosafot words, plus dictionary entries from Sefaria.</div>
 <form id="searchForm" autocomplete="off">
   <input id="wordInput" type="text" dir="rtl" lang="he" placeholder="הקלד מילה" autocapitalize="off" spellcheck="false">
   <button id="searchButton" type="submit">Search</button>
@@ -68,6 +68,8 @@ details div{margin-top:5px;max-height:180px;overflow:auto;white-space:pre-wrap}
 <script src="5-data-shas.js"></script>
 <script src="2-data-chumash.js"></script>
 <script src="5-3-data-rashi.js"></script>
+<script src="3-data-rashi-gemara.js"></script>
+<script src="4-data-tosafot.js"></script>
 <script>
 "use strict";
 /* word -> [times in Shas, quick gloss]. Keys use final letters folded (see canonical()). */
@@ -335,7 +337,7 @@ function relatedForms(word) {
   for (let n = 1; n <= 2; n++) {
     if (w.length - n < 2) break;
     if (![...w.slice(0, n)].every(ch => PREFIX_LETTERS.includes(ch))) break;
-    const stem = w.slice(n), hit = SHAS[stem] || CHUMASH[stem] || RASHI[stem];
+    const stem = w.slice(n), hit = SHAS[stem] || CHUMASH[stem] || RASHI[stem] || RASHI_GEMARA[stem] || TOSAFOT[stem];
     if (hit && !seen.has(stem)) { seen.add(stem); out.push({ word: stem, gloss: hit[1], prefix: w.slice(0, n) }); }
   }
   return out;
@@ -390,12 +392,14 @@ function renderEntry(entry, index) {
 }
 
 function renderResults(word, ctx) {
-  const { curated, gloss, chumash, rashi, dict, completion, failures, loading } = ctx;
+  const { curated, gloss, chumash, rashi, rashiGemara, tosafot, dict, completion, failures, loading } = ctx;
   const cards = [];
   if (curated) cards.push(curated);
   if (gloss) cards.push(gloss);
   if (chumash) cards.push(chumash);
   if (rashi) cards.push(rashi);
+  if (rashiGemara) cards.push(rashiGemara);
+  if (tosafot) cards.push(tosafot);
   const total = cards.length + dict.length;
   let html = `<div class="resulthead"><strong>${total ? total + " result" + (total === 1 ? "" : "s") : (loading ? "Searching…" : "No entry found")}</strong><span dir="rtl">${escapeHTML(word)}</span></div>`;
   let i = 0;
@@ -403,6 +407,8 @@ function renderResults(word, ctx) {
   if (gloss) html += renderEntry(gloss, i++);
   if (chumash) html += renderEntry(chumash, i++);
   if (rashi) html += renderEntry(rashi, i++);
+  if (rashiGemara) html += renderEntry(rashiGemara, i++);
+  if (tosafot) html += renderEntry(tosafot, i++);
   if (dict.length) {
     html += `<div class="section">Dictionary entries</div>`;
     html += dict.map(e => renderEntry(e, i++)).join("");
@@ -436,11 +442,13 @@ async function searchWord(rawWord) {
   const gloss = getShasGloss(word);
   const chumash = getSheetGloss(CHUMASH, word, "Chumash");
   const rashi = getSheetGloss(RASHI, word, "Rashi on Chumash");
+  const rashiGemara = getSheetGloss(RASHI_GEMARA, word, "Rashi on Gemara");
+  const tosafot = getSheetGloss(TOSAFOT, word, "Tosafot");
   const failures = [];
   let completion = [], dict = [];
 
   /* instant: show offline answers right away */
-  renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: true });
+  renderResults(word, { curated, gloss, chumash, rashi, rashiGemara, tosafot, dict, completion, failures, loading: true });
 
   try {
     const settled = await Promise.allSettled(["exact", "consonants", "split"].map(m => sefariaLookup(word, m)));
@@ -460,11 +468,11 @@ async function searchWord(rawWord) {
     }
     dict = rankEntries(dedupeEntries(parsed), word).slice(0, MAX_ENTRIES);
     if (searchID !== currentSearch) return;
-    renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: false });
+    renderResults(word, { curated, gloss, chumash, rashi, rashiGemara, tosafot, dict, completion, failures, loading: false });
   } catch (error) {
     if (searchID !== currentSearch) return;
     failures.push(error.message || "error");
-    renderResults(word, { curated, gloss, chumash, rashi, dict, completion, failures, loading: false });
+    renderResults(word, { curated, gloss, chumash, rashi, rashiGemara, tosafot, dict, completion, failures, loading: false });
   } finally {
     if (searchID === currentSearch) button.disabled = false;
   }
