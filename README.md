@@ -1,6 +1,6 @@
 # Torah Word Lookup
 
-A single-page word lookup for Shas (Gemara), Chumash, and Rashi on Chumash.
+A single-page word lookup for Shas (Gemara), Chumash, Rashi on Chumash, and Rashi and Tosafot on all of Shas.
 Type or paste a Hebrew/Aramaic word and get an instant offline gloss, plus
 dictionary entries from Sefaria (Jastrow, BDB, and more) when online.
 
@@ -12,6 +12,8 @@ the full Chumash and Rashi-on-Chumash word lists.
 - `index.html` - the app, including the built-in Shas quick-gloss list (37,607 words).
 - `data-chumash.js` - 12,840 unique Chumash words: occurrences, translation, grammatical form, source, confidence, example verse.
 - `data-rashi.js` - 29,415 unique Rashi-on-Chumash words, same format.
+- `data-rashi-gemara.js` - 129,551 unique words from Rashi on Gemara (all tractates that have one) plus Rashbam on Bava Batra/Pesachim, same format.
+- `data-tosafot.js` - 96,370 unique Tosafot-on-Gemara words, same format.
 
 The Chumash and Rashi lists come from the "Mefarshei HaOtzar - Chumash & Rashi
 Word Lists" Google Sheet (built 2026-11-12). Every row keeps its own source and
